@@ -4,7 +4,7 @@ import { ReactNode } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { supabase } from '@/lib/supabase-client';
+import { browserClient } from '@/lib/supabase-client';
 import { LogOut, Menu, FileText, Home, Settings } from 'lucide-react';
 import Link from 'next/link';
 
@@ -50,7 +50,7 @@ export default function DashboardLayout({
               </Link>
               <button
                 onClick={async () => {
-                  await supabase.auth.signOut();
+                  await browserClient.auth.signOut();
                   window.location.href = '/';
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-muted-foreground hover:text-foreground"
@@ -95,7 +95,7 @@ export default function DashboardLayout({
             variant="ghost" 
             size="icon"
             onClick={async () => {
-              await supabase.auth.signOut();
+              await browserClient.auth.signOut();
               window.location.href = '/';
             }}
             className="hidden md:flex"

@@ -1,18 +1,5 @@
-import {  browserClient } from './supabase-client';
+import { browserClient } from './supabase-client';
 import { toast } from 'sonner';
-import { v4 as uuidv4 } from 'uuid';
-
-// Helper function to check auth cookies for debugging
-function checkAuthCookies() {
-  if (typeof document !== 'undefined') {
-    const allCookies = document.cookie.split(';').map(c => c.trim());
-    console.log('All browser cookies:', allCookies);
-    const authCookies = allCookies.filter(c => c.startsWith('sb-') && c.includes('-auth-'));
-    console.log('Auth cookies found:', authCookies);
-    return authCookies.length > 0;
-  }
-  return false;
-}
 
 // Helper function to check if user is authenticated
 export async function getAuthenticatedUser() {
@@ -200,7 +187,7 @@ export async function getNoteById(id: string): Promise<Note | null> {
  * Create a new note
  */
 // In note-service.ts
-export async function createNote(note: { title: string; content: string; summary?: string }) {
+export async function createNote(note: CreateNoteInput) {
   console.log('Starting note creation process');
   
   // Get the current user session
@@ -239,21 +226,9 @@ export async function createNote(note: { title: string; content: string; summary
     throw error;
   }
 }
-// Helper function to get auth token directly from cookies
-async function getTokenDirectly() {
-  if (typeof document === 'undefined') return null;
+
   
-  // Try to get the auth token from cookies
-  const cookies = document.cookie.split(';');
-  const authCookie = cookies.find(c => c.trim().startsWith('sb-'));
-  
-  if (authCookie) {
-    console.log('Found auth cookie in browser');
-    return 'cookie-present';
-  }
-  
-  return null;
-}
+
 
 /**
  * Update an existing note
