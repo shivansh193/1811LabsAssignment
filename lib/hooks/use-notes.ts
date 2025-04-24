@@ -25,6 +25,11 @@ export function useNotes() {
   return useQuery({
     queryKey: noteKeys.lists(),
     queryFn: getNotes,
+    // Retry failed requests a few times - helpful for auth timing issues
+    retry: 3,
+    retryDelay: 1000,
+    // Don't refetch on window focus - prevents unnecessary auth checks
+    refetchOnWindowFocus: false,
   });
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -18,6 +18,7 @@ import {
   FormMessage 
 } from '@/components/ui/form';
 import { Loader2, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 
 const formSchema = z.object({
   title: z.string().min(1, { message: 'Title is required' }),
@@ -31,7 +32,7 @@ interface NoteEditorProps {
   onComplete?: () => void;
 }
 
-export function NoteEditor({ note, onComplete }: NoteEditorProps) {
+export function NoteEditor({ note, onComplete }: NoteEditorProps): React.ReactElement {
   const { mutate: createNote, isPending: isCreating } = useCreateNote();
   const { mutate: updateNote, isPending: isUpdating } = useUpdateNote();
   const { mutate: generateSummary, isPending: isGeneratingSummary } = useGenerateSummary();
@@ -46,37 +47,56 @@ export function NoteEditor({ note, onComplete }: NoteEditorProps) {
   });
 
   const onSubmit = async (values: FormValues) => {
-    if (note) {
-      // Update existing note
-      updateNote(
-        { 
-          id: note.id, 
-          updates: { 
+    try {
+      if (note) {
+        // Update existing note
+        updateNote(
+          { 
+            id: note.id, 
+            updates: { 
+              ...values, 
+              summary 
+            } 
+          },
+          {
+            onSuccess: () => {
+              if (onComplete) onComplete();
+            },
+            onError: (error: Error) => {
+              console.error('Error updating note:', error);
+              toast.error('Failed to update note: ' + error.message);
+            }
+          }
+        );
+      } else {
+        // Create new note
+        toast.loading('Creating your note...');
+        
+        // Create new note - with error handling
+        createNote(
+          { 
             ...values, 
             summary 
-          } 
-        },
-        {
-          onSuccess: () => {
-            if (onComplete) onComplete();
           },
-        }
-      );
-    } else {
-      // Create new note
-      createNote(
-        { 
-          ...values, 
-          summary 
-        },
-        {
-          onSuccess: () => {
-            form.reset();
-            setSummary(undefined);
-            if (onComplete) onComplete();
-          },
-        }
-      );
+          {
+            onSuccess: () => {
+              toast.dismiss();
+              toast.success('Note created successfully!');
+              form.reset();
+              setSummary(undefined);
+              if (onComplete) onComplete();
+            },
+            onError: (error: Error) => {
+              toast.dismiss();
+              console.error('Error creating note:', error);
+              toast.error('Failed to create note: ' + error.message);
+            }
+          }
+        );
+      }
+    } catch (error) {
+      console.error('Unexpected error in note submission:', error);
+      toast.error('An unexpected error occurred');
     }
   };
 
@@ -92,7 +112,7 @@ export function NoteEditor({ note, onComplete }: NoteEditorProps) {
     }
 
     generateSummary(content, {
-      onSuccess: (data) => {
+      onSuccess: (data: string) => {
         setSummary(data);
       },
     });

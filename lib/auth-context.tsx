@@ -1,7 +1,7 @@
 'use client'
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { browserClient as supabaseClient } from './supabase-client';
+import { browserClient, browserClient as supabaseClient } from './supabase-client';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -27,28 +27,87 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Get initial session
     const getInitialSession = async () => {
       try {
+        // First try to get the session
         const { data: { session } } = await supabaseClient.auth.getSession();
         console.log('Initial auth session:', session ? 'Found' : 'Not found');
+        
         if (session?.user) {
           console.log('User authenticated:', session.user.email);
+          setSession(session);
+          setUser(session.user);
+          setIsLoading(false);
+          return;
         }
-        setSession(session);
-        setUser(session?.user ?? null);
+        
+        // If no session, try to get the user directly
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        
+        if (user) {
+          console.log('User found via getUser:', user.email);
+          setUser(user);
+          // Even without a session, we know the user is authenticated
+          setIsLoading(false);
+          return;
+        }
+        
+        // No user found
+        console.log('No authenticated user found');
+        setSession(null);
+        setUser(null);
       } catch (error) {
         console.error('Error getting initial session:', error);
       } finally {
         setIsLoading(false);
       }
     };
+    const verifySession = async () => {
+      try {
+        const { data } = await supabaseClient.auth.getSession();
+        if (data.session) {
+          console.log('Session verified:', data.session.user?.email);
+          setSession(data.session);
+          setUser(data.session.user);
+        } else {
+          console.log('No session found, trying to refresh...');
+          const { data: refreshData } = await supabaseClient.auth.refreshSession();
+          if (refreshData.session) {
+            console.log('Session refreshed:', refreshData.session.user?.email);
+            setSession(refreshData.session);
+            setUser(refreshData.session.user);
+          } else {
+            setSession(null);
+            setUser(null);
+          }
+        }
+      } catch (error) {
+        console.error('Session verification error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    getInitialSession().then(verifySession);
 
-    getInitialSession();
 
     // Listen for auth changes
     const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session ? 'Session exists' : 'No session');
-        setSession(session);
-        setUser(session?.user ?? null);
+        
+        if (session) {
+          setSession(session);
+          setUser(session.user);
+        } else {
+          // Try to get the user directly as a fallback
+          try {
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            setUser(user);
+          } catch (err) {
+            console.error('Error getting user after auth state change:', err);
+            setUser(null);
+          }
+        }
+        
         setIsLoading(false);
         
         // If the user just signed in, log it and handle redirection
@@ -59,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // If we're on the auth page, redirect to dashboard
           if (typeof window !== 'undefined' && 
               (window.location.pathname.startsWith('/auth') || window.location.pathname === '/')) {
-            const redirectTo = localStorage.getItem('redirectTo') || '/dashboard';
+            const redirectTo = '/dashboard';
             console.log('Auth state change detected, redirecting to:', redirectTo);
             
             // Small delay to ensure cookies are properly set
@@ -74,7 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [router]);
 
   const signUp = async (email: string, password: string) => {
     try {
@@ -114,24 +173,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       
+      
       // Store the redirectTo in localStorage before authentication
       if (typeof window !== 'undefined') {
         localStorage.setItem('redirectTo', redirectTo);
         console.log('Stored redirectTo in localStorage:', redirectTo);
       }
       
-      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      // IMPORTANT: Use browserClient for authentication to ensure cookies are properly set
+      const { data, error } = await browserClient.auth.signInWithPassword({ email, password });
       
       if (error) {
         console.error('Sign in error:', error.message);
         throw error;
       }
-      
       if (data?.user) {
+        // Wait for session to be established before redirecting
         console.log('Sign in successful for user:', data.user.email);
-        console.log('Session established:', !!data.session);
         toast.success('Signed in successfully!');
         
+        // Remove the setTimeout and use router.push instead of direct window.location
+        router.refresh(); // Refresh the router cache
+        router.push(redirectTo);
+      
         // Store the session in localStorage for debugging
         if (typeof window !== 'undefined') {
           localStorage.setItem('lastAuthAttempt', JSON.stringify({
@@ -145,11 +209,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Log all cookies for debugging
         console.log('Cookies after sign in:', document.cookie);
         
+        // Verify the session was properly established
+        const { data: sessionData } = await browserClient.auth.getSession();
+        console.log('Session verification after login:', sessionData.session ? 'Session found' : 'No session');
+        
+        if (!sessionData.session) {
+          console.warn('No session found after login - attempting to repair session');
+          // Try to repair the session by refreshing
+          await browserClient.auth.refreshSession();
+        }
+        
         // Use direct window location for the most reliable redirect
         console.log('Redirecting to:', redirectTo);
+        
+        // Add a longer delay to ensure session is fully established and cookies are set
+        console.log('Waiting for session to be fully established before redirecting...');
         setTimeout(() => {
-          window.location.href = redirectTo;
-        }, 1000); // Slightly longer delay to ensure session is properly established
+          // Double-check session before redirecting
+          browserClient.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
+            console.log('Final session check before redirect:', data.session ? 'Session found' : 'No session');
+            window.location.href = redirectTo;
+          });
+        }, 2000); // Longer delay to ensure session is properly established
       } else {
         console.error('Sign in succeeded but no user data returned');
         toast.error('Authentication error. Please try again.');
